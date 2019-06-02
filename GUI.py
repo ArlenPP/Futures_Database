@@ -103,7 +103,7 @@ Button(manipulate_frame, text='查詢', command=update, bg='limegreen').grid(row
 data =Table(data_frame, showtoolbar=True, showstatusbar=True, width=300)
 
 i = 5
-data.model.df = dataframe=df.head(i)
+data.model.df = df.head(i)
 data.show()
 
 window.mainloop()
