@@ -2,14 +2,6 @@ import pymysql
 import inspect
 import os
 
-config = {
-        'host': os.environ.get('stockdb_host'),
-        'port': int(os.environ.get('stockdb_port')),
-        'user': os.environ.get('stockdb_user'),
-        'password': os.environ.get('stockdb_passwd'),
-        'db': 'fitx',
-    }
-
 class stockDB(object):
     def __init__(self, host, port, user, password, db):
         self.db = pymysql.connect(host=host, port=port, user=user, passwd=password, db=db, charset='utf8')
@@ -83,10 +75,10 @@ if __name__ == "__main__":
 
     mydb = stockDB(**config)
     # mydb.insert_data("1999-01-07",6150,6430,6074,6120, 0)
-    # result = mydb.read_data("1999-01-05", "1999-01-07")
-    # if(0 == len(result)):
-    #     print("Nothing")
-    # else:
-    #     print(result)
-    mydb.exe_query("delete from day_ks where Date=\"1999-01-07\"")
+    result = mydb.read_data("1999-01-05", "1999-01-07")
+    if(0 == len(result)):
+        print("Nothing")
+    else:
+        print(result)
+    # mydb.exe_query("delete from day_ks where Date=\"1999-01-07\"")
     mydb.db.close()
