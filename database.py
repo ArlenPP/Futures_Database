@@ -1,6 +1,14 @@
 import pymysql
 import inspect
 import os
+config = {
+        'host': os.environ.get('stockdb_host'),
+        'port': int(os.environ.get('stockdb_port')),
+        'user': os.environ.get('stockdb_user'),
+        'password': os.environ.get('stockdb_passwd'),
+        'db': 'fitx',
+    }
+
 
 class stockDB(object):
     def __init__(self, host, port, user, password, db):
@@ -47,7 +55,8 @@ class stockDB(object):
                 return
             table = 'minute_ks'
             #SQL query
-            sql_query = "INSERT INTO %s VALUES(%s, %s, %s, %s, %s, %s)" % (table ,Date, Time, Open, High, Low, Close, Volume)
+            sql_query = "INSERT INTO %s VALUES(\"%s\", \"%s\", %s, %s, %s, %s, %s)" % (table ,Date, Time, Open, High, Low, Close, Volume)
+            print(sql_query)
             self.exe_query(sql_query)
 
     def read_data(self, sDate, eDate, sTime=None, eTime=None):
@@ -65,7 +74,7 @@ class stockDB(object):
             #check is this data and time already in database
             table = 'minute_ks'
             #SQL query
-            sql_query = "select * from %s where Date=\"%s\", Time>=\"%s\" and Time<=\"%s\" "% (table ,Date, sTime, eTime)
+            sql_query = "select * from %s where Date=\"%s\" and Time>=\"%s\" and Time<=\"%s\" "% (table ,sDate, sTime, eTime)
             self.exe_query(sql_query)
             return self.cursor.fetchall()
 
@@ -74,11 +83,11 @@ class stockDB(object):
 if __name__ == "__main__":
 
     mydb = stockDB(**config)
-    # mydb.insert_data("1999-01-07",6150,6430,6074,6120, 0)
-    result = mydb.read_data("1999-01-05", "1999-01-07")
-    if(0 == len(result)):
-        print("Nothing")
-    else:
-        print(result)
+    mydb.insert_data(Date="1999/01/07", Time="13:09:01", Open=6150, High=6430, Low=6074, Close=6120, Volume=0)
+    # result = mydb.read_data("1999-01-05", "1999-01-07")
+    # if(0 == len(result)):
+    #     print("Nothing")
+    # else:
+    #     print(result)
     # mydb.exe_query("delete from day_ks where Date=\"1999-01-07\"")
     mydb.db.close()
