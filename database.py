@@ -1,6 +1,10 @@
 import pymysql
 import inspect
 import os
+import pandas as pd
+from sqlalchemy import create_engine
+from sqlalchemy import Table, Column, Integer, String, MetaData, ForeignKey
+from sqlalchemy.orm import sessionmaker
 config = {
         'host': os.environ.get('stockdb_host'),
         'port': int(os.environ.get('stockdb_port')),
@@ -12,8 +16,16 @@ config = {
 
 class stockDB(object):
     def __init__(self, host, port, user, password, db):
-        self.db = pymysql.connect(host=host, port=port, user=user, passwd=password, db=db, charset='utf8')
+        self.db = pymysql.connect(host=host, port=port, user=user, password=password, db=db, charset='utf8')
         self.cursor = self.db.cursor()
+        
+        # ORM
+        self.engine = create_engine("mysql+pymysql://{}:{}@{}:{}/{}".format(user, password, host, port, db))
+        self.metadata = MetaData()
+        self.metadata.reflect(bind=self.engine)
+        self.Session = sessionmaker(bind=self.engine)
+        self.day_ks = self.metadata.tables.get('day_ks')
+        self.minute_ks = self.metadata.tables.get('minute_ks')
 
     def exe_query(self, query):
         caller = inspect.stack()[1].function
@@ -21,6 +33,7 @@ class stockDB(object):
             self.cursor.execute(query)
             #提交修改
             self.db.commit()
+            return self.cursor.fetchall()
             print(caller + ' success')
         except pymysql.InternalError as error:
             #發生錯誤時停止執行SQL
@@ -28,66 +41,36 @@ class stockDB(object):
             self.db.rollback()
             print(caller + '\n\n' + str(code) + ' ' + message)
 
-    def insert_data(self, Date, Open, High, Low, Close, Volume, Time=None):
-        # Date = '%Y-%m-%d'
-        # Time = '%H:%M:%S'
-        # Open, High, Low, Close, Volume are int
-        
-        table = 'day_ks'
-        # Day k
-        if(None == Time):
-            #check is this data already in database
-            if(len(self.read_data(sDate=Date, eDate=Date)) != 0):
-                print("%s already in DataBase" % (Date))
-                return
-            
-            #SQL query
-            sql_query = "INSERT INTO %s VALUES(\"%s\", %s, %s, %s, %s, %s)" % (table ,Date, Open, High, Low, Close, Volume)
-
-            print(sql_query)
-            self.exe_query(sql_query)
-
-        # minute k
-        else:
-            #check is this data and time already in database
-            if(len(self.read_data(sDate=Date, eDate=Date, sTime=Time, eTime=Time)) != 0):
-                print("%s %s already in DataBase" % (Date, Time))
-                return
-            table = 'minute_ks'
-            #SQL query
-            sql_query = "INSERT INTO %s VALUES(\"%s\", \"%s\", %s, %s, %s, %s, %s)" % (table ,Date, Time, Open, High, Low, Close, Volume)
-            print(sql_query)
-            self.exe_query(sql_query)
+    def insert_data(self, df, table):
+        df.to_sql(name=table, if_exists='append', index=False, con=self.engine)
 
     def read_data(self, sDate, eDate, sTime=None, eTime=None):
         
-        table = 'day_ks'
-        # Day k
-        if(None == sTime and None == eTime):        
-            #SQL query
-            sql_query = "select * from %s where Date>=\"%s\" and Date<=\"%s\""% (table ,sDate, eDate)
-            self.exe_query(sql_query)
-            return self.cursor.fetchall()
-
-        # minute k
+        if(sTime == None or eTime == None):
+            session = self.Session()
+            day_ks = self.day_ks
+            query = session.query(day_ks).filter(day_ks.columns.Date>=sDate,       
+                                                 day_ks.columns.Date<=eDate)
+            df = pd.read_sql(query.statement, query.session.bind)
+            session.close()
+            return df
         else:
-            #check is this data and time already in database
-            table = 'minute_ks'
-            #SQL query
-            sql_query = "select * from %s where Date=\"%s\" and Time>=\"%s\" and Time<=\"%s\" "% (table ,sDate, sTime, eTime)
-            self.exe_query(sql_query)
-            return self.cursor.fetchall()
-
-    # Read Data
+            session = self.Session()
+            minute_ks = self.minute_ks
+            query = session.query(minute_ks).filter(minute_ks.columns.Date>=sDate, 
+                                                minute_ks.columns.Date<=eDate,
+                                                minute_ks.columns.Time>=sTime,
+                                                minute_ks.columns.Time<=eTime)
+            df = pd.read_sql(query.statement, query.session.bind)
+            session.close()
+            return df
 
 if __name__ == "__main__":
 
     mydb = stockDB(**config)
-    mydb.insert_data(Date="1999/01/07", Time="13:09:01", Open=6150, High=6430, Low=6074, Close=6120, Volume=0)
-    # result = mydb.read_data("1999-01-05", "1999-01-07")
-    # if(0 == len(result)):
-    #     print("Nothing")
-    # else:
-    #     print(result)
-    # mydb.exe_query("delete from day_ks where Date=\"1999-01-07\"")
+    # df = mydb.read_data("2019/3/20", "2019/03/21")
+    # df = mydb.read_data("2019/01/1", "2019/1/30", "00:00", "14:00")
+    # mydb.exe_query("delete from day_ks where Date=\"2019/3/21\"")
+    # df = pd.read_csv("./product/fitx.csv")
+    # mydb.insert_data(df, "day_ks")
     mydb.db.close()
