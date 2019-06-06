@@ -34,7 +34,7 @@ class stockDB(object):
             #提交修改
             self.db.commit()
             result = self.cursor.fetchall()
-            columns = mydb.cursor.description 
+            columns = self.cursor.description 
             columns = [v[0] for v in columns]
             df = pd.DataFrame(data=list(result), columns=columns) 
             return df
@@ -48,26 +48,20 @@ class stockDB(object):
     def insert_data(self, df, table):
         df.to_sql(name=table, if_exists='append', index=False, con=self.engine)
 
-    def read_data(self, sDate, eDate, sTime=None, eTime=None):
+    def read_data(self, start, end, isDay):
         
-        if(sTime == None or eTime == None):
-            session = self.Session()
-            day_ks = self.day_ks
-            query = session.query(day_ks).filter(day_ks.columns.Date>=sDate,       
-                                                 day_ks.columns.Date<=eDate)
-            df = pd.read_sql(query.statement, query.session.bind)
-            session.close()
-            return df
+        if(True == isDay):
+            table = self.day_ks
+            column = self.day_ks.columns.Date
         else:
-            session = self.Session()
-            minute_ks = self.minute_ks
-            query = session.query(minute_ks).filter(minute_ks.columns.Date>=sDate, 
-                                                minute_ks.columns.Date<=eDate,
-                                                minute_ks.columns.Time>=sTime,
-                                                minute_ks.columns.Time<=eTime)
-            df = pd.read_sql(query.statement, query.session.bind)
-            session.close()
-            return df
+            table = self.minute_ks
+            column = self.minute_ks.columns.Datetime
+
+        session = self.Session()
+        query = session.query(table).filter(column>=start, column<=end)
+        df = pd.read_sql(query.statement, query.session.bind)
+        session.close()
+        return df
 
 if __name__ == "__main__":
 

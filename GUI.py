@@ -35,12 +35,12 @@ class ButtonMode(Frame, Mode):
         else:
             sDate = start.strftime('%Y-%m-%d')
             eDate = end.strftime('%Y-%m-%d')
-            sTime = start.strftime('%H:%M:%S')
-            eTime = end.strftime('%H:%M:%S')
+            sDatetime = start.strftime('%Y-%m-%d %H:%M:%S')
+            eDatetime = end.strftime('%Y-%m-%d %H:%M:%S')
             if self.q[3].get() == 'day':
-                return self.read(sDate, eDate)
+                return self.read(sDate, eDate, True)
             else:
-                return self.read(sDate, eDate, sTime, eTime)
+                return self.read(sDatetime, eDatetime, False)
 
 
 class SQLMode(ScrolledText, Mode):
