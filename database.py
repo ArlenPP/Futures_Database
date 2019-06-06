@@ -33,7 +33,11 @@ class stockDB(object):
             self.cursor.execute(query)
             #提交修改
             self.db.commit()
-            return self.cursor.fetchall()
+            result = self.cursor.fetchall()
+            columns = mydb.cursor.description 
+            columns = [v[0] for v in columns]
+            df = pd.DataFrame(data=list(result), columns=columns) 
+            return df
             print(caller + ' success')
         except pymysql.InternalError as error:
             #發生錯誤時停止執行SQL
