@@ -120,12 +120,13 @@ def taifex(today):
 
 if '__main__' == __name__:
     
+    # 先取得爬蟲要爬的日期
+    day_list = day_list()
+    
     # connect to DB
     mydb = stockDB(**db_config)
     prev_df = mydb.read_data(day_list[0], day_list[-1], True)
     
-    # 先取得爬蟲要爬的日期
-    day_list = day_list()
 
     # 確認這個日期的day_k是不是已經存在了
     already = pd.to_datetime(prev_df['Date']).tolist()
