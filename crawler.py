@@ -10,15 +10,22 @@ import numpy as np
 import requests
 import zipfile
 import os
+from database import stockDB
+
 config = {
     'taifex_fname': 'Daily_%s_%s_%s.zip',
     'taifex_path': './taifex/',
     'taifex_url': 'http://www.taifex.com.tw/DailyDownload/DailyDownloadCSV/',
-    'day_ks_path': './fitx.csv',
-    'minute_ks_path': './minute_ks/',
-
 }
 config = namedtuple('Config', config.keys())(**config)
+
+db_config = {
+        'host': os.environ.get('stockdb_host'),
+        'port': int(os.environ.get('stockdb_port')),
+        'user': os.environ.get('stockdb_user'),
+        'password': os.environ.get('stockdb_passwd'),
+        'db': 'fitx',
+    }
 
 def day_list(buffer = 40):
     today = date.today()
@@ -67,63 +74,71 @@ def taifex(today):
             break
 
     # 1-minute k # {{{
-    minute_k = { 'minute': False }
+    minute_k = { 'Time': False, }
     minute_ks = []
     for line in lines:
         # 0        1        2              3        4        5             6        7        8
         # 成交日期,商品代號,到期月份(週別),成交時間,成交價格,成交數量(B+S),近月價格,遠月價格,開盤集合競價
         cells = line.split(',')
         if cells[3] < '084500' or cells[3] > '134500' or int(cells[4]) < 0: continue
-        minute = cells[3][:4]
+        minute = cells[3][:2] + ':' + cells[3][2:4]
         
-        if minute == minute_k['minute'] or minute == '1345':
+        if minute == minute_k['Time'] or minute == '13:45':
             price = int(cells[4])
-            minute_k['close'] = price
-            minute_k['volume'] = minute_k['volume'] + int(cells[5])/2
-            if price > minute_k['high']: minute_k['high'] = price
-            elif price < minute_k['low']: minute_k['low'] = price
+            minute_k['Close'] = price
+            minute_k['Volume'] = minute_k['Volume'] + int(cells[5])/2
+            if price > minute_k['High']: minute_k['High'] = price
+            elif price < minute_k['Low']: minute_k['Low'] = price
         else: # new minute
             minute_ks.append(minute_k)
-            minute_k = { 'minute': minute }
-            minute_k['close'] = minute_k['high'] = minute_k['low'] = minute_k['open'] = int(cells[4])
-            minute_k['volume'] = int(cells[5])/2
+            minute_k = { 'Time': minute }
+            minute_k['Close'] = minute_k['High'] = minute_k['Low'] = minute_k['Open'] = int(cells[4])
+            minute_k['Volume'] = int(cells[5])/2
+            minute_k['Date'] = year +'/'+ month +'/'+ day
     minute_ks.append(minute_k)
     minute_ks.pop(0)
-    # }}}
+
+
+    minute_ks_df = pd.DataFrame.from_dict(minute_ks)
+
+    minute_ks_df['DateTime'] = pd.to_datetime(minute_ks_df['Date'] + ' ' + minute_ks_df['Time'])
+    minute_ks_df.fillna(0, inplace=True)
+
+    # day_ks
     day_ks = {
         'Date': [year +'/'+ month +'/'+ day],
-        'Open': [minute_ks[0]['open']],
-        'High': [max([v['high'] for v in minute_ks])],
-        'Low': [min([v['low'] for v in minute_ks])],
-        'Close': [minute_ks[-1]['close']],
-        'Volume': [sum([v['volume'] for v in minute_ks])],
+        'Open': [minute_ks[0]['Open']],
+        'High': [max([v['High'] for v in minute_ks])],
+        'Low': [min([v['Low'] for v in minute_ks])],
+        'Close': [minute_ks[-1]['Close']],
+        'Volume': [sum([v['Volume'] for v in minute_ks])],
     }
-    return day_ks, minute_ks
+    day_ks_df = pd.DataFrame.from_dict(day_ks)
+    
+    return day_ks_df, minute_ks_df
 
 
 if '__main__' == __name__:
+    
+    # connect to DB
+    mydb = stockDB(**db_config)
+    prev_df = mydb.read_data(day_list[0], day_list[-1], True)
+    
+    # 先取得爬蟲要爬的日期
     day_list = day_list()
-    for day in day_list:
-        day_ks, minute_ks = taifex(day)
 
-        if(day_ks != None and minute_ks != None):
-            split = ","
-            #  if min_k exit then day_k was done so continue
-            if os.path.exists(config.minute_ks_path+day.strftime('%Y%m%d')+'.csv'):
-                continue
-            df = pd.DataFrame(day_ks, columns=day_ks.keys())
-            # order the columns to what we want
-            df = df[['Date', 'Open', 'High', 'Low', 'Close', 'Volume']]        
-            day_path = config.day_ks_path
-            if os.path.exists(day_path):
-                df.to_csv(day_path, mode='a', header=False, index=False)
-            else:
-                df.to_csv(day_path, mode='w', header=True, index=False)
-                               
-            with open(config.minute_ks_path+day.strftime('%Y%m%d')+'.csv', 'w') as f:
-                f.write('Date,Time,Open,High,Low,Close,Volume\n')
-                for line in minute_ks:
-                    data_minute = [day.strftime('%Y%m%d'), str(line['minute']), str(line['open']), str(line['high']), str(line['low']), str(line['close']), str(line['volume'])+'\n']
-                    f.write(split.join(data_minute))
+    # 確認這個日期的day_k是不是已經存在了
+    already = pd.to_datetime(prev_df['Date']).tolist()
+    already = [day.date() for day in already[-40:]]
+
+    need = set(day_list) - set(already)
+
+    for day in need:
+        day_ks, minute_ks = taifex(day)
+        if(day_ks is None or minute_ks is None):
+            continue
+        mydb.insert_data(day_ks, "day_ks")
+        mydb.insert_data(minute_ks, "minute_ks")
+
     print(day_list[-1].strftime('%Y/%m/%d')+' done!')
 # vi:et:sw=4:ts=4
